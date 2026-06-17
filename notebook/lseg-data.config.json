@@ -1,0 +1,14 @@
+{
+  "logs": {
+    "level": "debug",
+    "transports": {
+      "console": {
+        "enabled": false
+      },
+      "file": {
+        "enabled": false,
+        "name": "lseg-data-lib.log"
+      }
+    }
+  }
+}
