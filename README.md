@@ -1,12 +1,66 @@
 # Concurrent Data Platform API Calls with Python Asyncio and Data Library for Python
 
-A Jupyter notebook demonstrating how to issue multiple [LSEG Data Library for Python](https://developers.lseg.com/en/api-catalog/lseg-data-platform/lseg-data-library-for-python) API requests concurrently using Python's built-in `asyncio` module.
+- Version: 1.0
+- Last update: June 2026
+- Environment: Python + JupyterLab + Data Platform Account
+- Prerequisite: Data Platform access/entitlements
 
 ---
 
 ## Overview
 
-Rather than fetching market data sequentially, this project demonstrate how to use `asyncio.gather` with Data Library Historical `get_data_async` method to send multiple historical price data concurrently.
+This project is a semi-sequel to my [Concurrent Data Platform API Calls with Python Asyncio and HTTPX](https://github.com/LSEG-API-Samples/Example.RDP.Python.Async.HTTPX) project. That project shows how to use Python and the [HTTPX](https://www.python-httpx.org/) library to make concurrent HTTP REST requests to LSEG [Data Platform](https://developers.lseg.com/en/api-catalog/refinitiv-data-platform/refinitiv-data-platform-apis) asynchronously. This project shifts away from manually sending HTTP REST requests and instead uses the easy-to-use [LSEG Data Library for Python](https://developers.lseg.com/en/api-catalog/lseg-data-platform/lseg-data-library-for-python). The Data Library for Python Historical Pricing module offers the `get_data_async` method to request historical data asynchronously, letting developers send multiple requests concurrently without blocking the process.
+
+
+**Note**: This project is based on the Data Library for Python version 2.1.1. The library behavior might change in future releases.
+
+---
+
+## (Recap) What are Synchronous and Asynchronous Execution Models?
+
+**Synchronous** code runs tasks one at a time — each request must complete before the next one starts. The program blocks and waits at every I/O-bound call, so if a request takes 60 seconds, nothing else runs for those 60 seconds. Fine for a single request, but a real bottleneck when fetching data with many calls.
+
+![synchronous](images/02_synchronous_simple.png)
+
+**Asynchronous** code lets multiple tasks run concurrently. While one request is waiting for a network response, the event loop hands control to the next task instead of sitting idle.
+
+![asynchronous](images/04_asynchronous_simple.png)
+
+The real payoff comes when you have **many requests to make**. With `asyncio.gather()` and `asyncio.TaskGroup()`, all requests are fired concurrently so the total time is roughly that of the single slowest response — not the sum of all response times.
+
+---
+
+## Throttling and Rate Limits 
+
+The Data Platform API request limits (throttles) to effectively manage and protect its service and ensure fair usage across the non-streaming content. 
+
+An application would receive an error from the API call if an application reached or exceeds a limit (especially with the Asynchronous HTTP calls). You required to make some necessary adjustments to rectify the interaction with the API and retry the respective API call. 
+
+Two different server errors on API request limits are: 
+
+| **HTTP Status** | **Detail** |
+| --- | --- |
+| **429** | **Error Message**: too many attempts |
+|  | **Description**: A per account limit where the number of requests per second is limited for each account accessing the platform. If this limit is reached, applications will receive a standard HTTP error (HTTP 429 too many requests). |
+|  | **Suggestion**: Please reduce the number of requests per second and retry. |
+
+Please find more detail regarding the Data Platform HTTP error status messages from the [RDP API General Guidelines](https://developers.lseg.com/en/api-catalog/refinitiv-data-platform/refinitiv-data-platform-apis/documentation) document page.
+
+The Historical Pricing endpoint rate limits information is available on the **Reference** tab of the [Data Platform API Playground](https://apidocs.refinitiv.com/Apps/ApiDocs) page. The current rate limits (**As of Mar 2026**) is as follows:
+
+![historical rate limit](images/05_historical-pricing-ratelimits.png)
+
+---
+
+## Prerequisites
+
+- Python 3.11+
+- LSEG Data Platform credentials with Historical Pricing permission:
+  - Machine ID
+  - Password
+  - AppKey
+
+Please your LSEG representative or account manager for the Data Platform Access
 
 ---
 
@@ -38,9 +92,17 @@ Rather than fetching market data sequentially, this project demonstrate how to u
 
 ---
 
-## Setup
+## Included Notebooks
 
-### 1. Create and activate a virtual environment
+| Notebook | Description |
+|---|---|
+| [ld_notebook_async_gather.ipynb](notebook/ld_notebook_async_gather.ipynb) | Demonstrates how to request multiple RICs concurrently using the Data Library Historical Pricing `get_data_async` method combined with `asyncio.gather()`. Covers Events and Summaries definitions, error handling for invalid RICs and fields, and how `return_exceptions=True` keeps all results — successes and failures — in one place. |
+
+---
+
+## Project Setup
+
+1. Create and activate a virtual environment
 
 ```powershell
 # Windows (PowerShell)
@@ -54,14 +116,14 @@ python3 -m venv .venv
 source .venv/bin/activate
 ```
 
-### 2. Install dependencies
+2. Install dependencies
 
 ```powershell
 (venv)$>python -m pip install --upgrade pip
 (venv)$>python -m pip install -r requirements.txt
 ```
 
-### 3. Configure credentials
+3. Configure credentials
 
 Copy `.env.example` to `.env` inside the `notebook/` folder and fill in your credentials:
 
@@ -71,7 +133,7 @@ LSEG_MACHINE_ID=your_machine_id_here
 LSEG_PASSWORD=your_password_here
 ```
 
-### 4. Run the notebook
+4. Run the notebook
 
 Open `notebook/ld_notebook_async_gather.ipynb` in JupyterLab or VS Code and run the cells in order.
 
@@ -112,7 +174,6 @@ You can find more detail regarding the Data Library and Python Asyncio from the 
 - [Python Asyncio library](https://docs.python.org/3/library/asyncio.html) page.
 - [A Conceptual Overview of asyncio](https://docs.python.org/3/howto/a-conceptual-overview-of-asyncio.html#a-conceptual-overview-of-asyncio) article.
 - [Python's asyncio: A Hands-On Walkthrough](https://realpython.com/async-io-python/)
-- [Asynchronous HTTP Requests in Python with HTTPX and asyncio](https://www.twilio.com/en-us/blog/asynchronous-http-requests-in-python-with-httpx-and-asyncio)
 - [Asyncio gather function document](https://docs.python.org/3/library/asyncio-task.html#asyncio.gather) page.
 - [Asyncio TaskGroup function document](https://docs.python.org/3/library/asyncio-task.html#task-groups) page.
 
