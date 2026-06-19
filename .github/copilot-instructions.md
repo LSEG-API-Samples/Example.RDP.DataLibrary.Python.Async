@@ -29,7 +29,8 @@ Before running setup commands, confirm the project structure should match this l
 ├── requirements.txt
 ├── .venv/
 └── notebook/
-    ├── ld_notebook_async.ipynb
+    ├── ld_notebook_async_gather.ipynb
+    ├── ld_notebook_gather_performance.ipynb
     ├── .env
     ├── .env.example
     └── lseg-data.config.json
@@ -37,7 +38,7 @@ Before running setup commands, confirm the project structure should match this l
 
 Notes:
 - `.venv/` must be inside the workspace root.
-- `notebook/` must contain both `ld_notebook_async.ipynb` and `lseg-data.config.json`.
+- `notebook/` must contain `lseg-data.config.json` and `.env.example`.
 
 ---
 
