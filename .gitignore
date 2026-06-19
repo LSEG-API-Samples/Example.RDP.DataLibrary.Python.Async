@@ -133,6 +133,6 @@ note.md
 # for development purposes, ignore these notebooks
 notebook/ld_get_data_async.ipynb
 notebook/ld_notebook_async_taskgroup.ipynb 
-notebook/ld_notebook_gather_performance.ipynb
+#notebook/ld_notebook_gather_performance.ipynb
 notebook/ld_notebook_taskgroup_performance.ipynb 
 notebook/test_notebook.ipynb
