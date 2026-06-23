@@ -14,21 +14,6 @@ This project is a semi-sequel to my [Concurrent Data Platform API Calls with Pyt
 
 **Note**: This project is based on the Data Library for Python version 2.1.1. The library behavior might change in future releases.
 
----
-
-## (Recap) What are Synchronous and Asynchronous Execution Models?
-
-**Synchronous** code runs tasks one at a time — each request must complete before the next one starts. The program blocks and waits at every I/O-bound call, so if a request takes 60 seconds, nothing else runs for those 60 seconds. Fine for a single request, but a real bottleneck when fetching data with many calls.
-
-![synchronous](images/02_synchronous_simple.png)
-
-**Asynchronous** code lets multiple tasks run concurrently. While one request is waiting for a network response, the event loop hands control to the next task instead of sitting idle.
-
-![asynchronous](images/04_asynchronous_simple.png)
-
-The real payoff comes when you have **many requests to make**. With `asyncio.gather()` and `asyncio.TaskGroup()`, all requests are fired concurrently so the total time is roughly that of the single slowest response — not the sum of all response times.
-
----
 
 ## Throttling and Rate Limits 
 

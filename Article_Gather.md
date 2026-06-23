@@ -37,11 +37,11 @@ Before proceeding, I would like to briefly recap the synchronous and asynchronou
 
 **Synchronous** code runs tasks one at a time — each request must complete before the next one starts. The program blocks and waits at every I/O-bound call, so if a request takes 60 seconds, nothing else runs for those 60 seconds. Fine for a single request, but a real bottleneck when fetching data with many calls.
 
-![synchronous](images/02_synchronous_simple.png)
+![synchronous](images/01_synchronous_simple.png)
 
 **Asynchronous** code lets multiple tasks run concurrently. While one request is waiting for a network response, the event loop hands control to the next task instead of sitting idle.
 
-![asynchronous](images/04_asynchronous_simple.png)
+![asynchronous](images/02_asynchronous_simple.png)
 
 The real payoff comes when you have **many requests to make**. With `asyncio.gather()` and `asyncio.TaskGroup()`, all requests are fired concurrently so the total time is roughly that of the single slowest response — not the sum of all response times.
 
@@ -65,7 +65,7 @@ Please find more detail regarding the Data Platform HTTP error status messages f
 
 The Historical Pricing endpoint rate limits information is available on the **Reference** tab of the [Data Platform API Playground](https://apidocs.refinitiv.com/Apps/ApiDocs) page. The current rate limits (**As of Mar 2026**) is as follows:
 
-![historical rate limit](images/05_historical-pricing-ratelimits.png)
+![historical rate limit](images/03_historical-pricing-ratelimits.png)
 
 ## Prerequisite
 
@@ -88,13 +88,29 @@ Make sure you have the following set up:
 
 Please your LSEG representative or account manager for the Data Platform Access.
 
+That’s all I have to say about this article and example code prerequisite.
+
+## Access Layer get_history vs Content Layer historical_pricing
+
+That brings us to a big question, why use Content Layer Historical Pricing rather than `get_history` method?
+
+The `get_history` method is part of the Library *Access Layer*. It is simple and convenient, but synchronous. Calls block execution until complete.
+
+The `historical_pricing` module is part of the *Content Layer*. The Content Layer allows developers to access the same content as Access Layer which are a more flexible manner:
+
+- Richer and fuller responses where available.
+- Asynchronous and event-driven modes in addition to synchronous usage.
+- Logical content modules for market data domains such as Level 1 Market Price Data (snapshot/streaming), News, Historical Pricing and so on.
+
+The module lets developers set historical data query via *definition* then get data via synchronous `get_data` and asynchronous `get_data_async` methods. I am focusing on the asynchronous `get_data_async` method of the Historical Pricing module here.
+
 ## Code Walkthrough
 
 Now we come to the code walkthrough. This article focuses primarily on the asynchronous code.
 
 The first step is to import the required libraries. The main libraries are `lseg.data` and `asyncio`.
 
-## Import Required Libraries
+### Import Required Libraries
 
 ```python
 import os
@@ -110,26 +126,12 @@ import pandas as pd
 pd.set_option("future.no_silent_downcasting", True)
 ```
 
-## Load Credentials from .env
 
-Use [python-dotenv](https://pypi.org/project/python-dotenv/) to load credentials from .env.
+### Open a Platform Session
 
-Note: The .env file should not be committed to version control.
+Moving on to the next step, create a Data Library session object to authenticate, manage the connection, and retrieve data.
 
-```python
-# Load environment variables from .env file
-load_dotenv(dotenv_path='.env')
-# Retrieve Platform Session credentials from environment variables
-app_key = os.getenv('LSEG_API_KEY')
-username = os.getenv('LSEG_MACHINE_ID')
-password = os.getenv('LSEG_PASSWORD')
-```
-
-## Open a Platform Session
-
-Moving on to the next step, 
-
-Create a Data Library session object to authenticate, manage the connection, and retrieve data.
+The code below gets the Data Platform credential from the OS environment variables. You can use the [python-dotenv](https://pypi.org/project/python-dotenv/) library to load credentials from `.env` file as well.
 
 ```python
 
@@ -152,9 +154,14 @@ session.set_default(ld_session)
 
 # Open the connection to the LSEG Data Platform
 ld_session.open()
+# 
 ```
 
-## Declare Instruments and Request Parameters
+If the library can open the session successfully, you should see the **<OpenState.Opened: 'Opened'>** output message. 
+
+The next step is creating the data request variables such as dictionary of company RICs and Name, request fields, etc. 
+
+### Declare Instruments and Request Parameters
 
 ```python
 # -- Instrument universe --------------------------------------------------------
@@ -164,28 +171,7 @@ INSTRUMENTS = {
     "MSFT.O":  "Microsoft",
     "AMZN.O":  "Amazon",
     "GOOG.O":  "Alphabet",
-    "AVGO.O":  "Broadcom",
-    "META.O":  "Meta",
-    "ORCL.N":  "Oracle",
-    "IBM.N":   "IBM",
-    "PLTR.O":  "Palantir",
-    "NFLX.O":  "Netflix",
-    "TSLA.O":  "Tesla",
-    "CRM.N":   "Salesforce",
-    "AMD.O":   "AMD",
-    "INTC.O":  "Intel",
-    "ARM.O":   "Arm Holdings",
-    "TXN.O": "Texas Instruments",
-    "CSCO.O":  "Cisco Systems",
-    "WMT.O":   "Walmart",
-    "LLY.N":   "Eli Lilly and Company",
-    "JPM.N":   "JPMorgan Chase & Co.",
-    "XOM.N":   "Exxon Mobil Corporation",
-    "V.N":     "Visa Inc.",
-    "JNJ.N":   "Johnson & Johnson",
-    "MU.O":    "Micron Technology, Inc.",
-    "MA.N":    "Mastercard Incorporated",
-    "COST.O":  "Costco Wholesale Corporation",
+    # ....
     "CVX.N":   "Chevron Corporation",
     "BAC.N":   "Bank of America Corporation",
     "CAT.N":   "Caterpillar Inc.",
@@ -207,37 +193,27 @@ INTRADAY_FIELDS = ["TRDPRC_1", "BID", "ASK"]
 INTERDAY_FIELDS = ["BID", "ASK", "OPEN_PRC", "HIGH_1", "LOW_1", "TRDPRC_1", "NUM_MOVES", "TRNOVR_UNS"]
 ```
 
-## Access Layer get_history vs Content Layer historical_pricing
+### Using asyncio.gather
 
-Why use Content Layer Historical Pricing rather than get_history?
+That brings us to the most to the most direct and easiest way to request historical data concurrently, combine Historical Pricing `get_data_async` calls with [`asyncio.gather(*aws)`](https://docs.python.org/3/library/asyncio-task.html#asyncio.gather) method.
 
-The get_history method is part of the Access Layer. It is simple and convenient, but synchronous. Calls block execution until complete.
+**await asyncio.gather(*aws, return_exceptions=False)**
 
-The historical_pricing module is part of the Content Layer and offers:
+- Runs [awaitable objects](https://docs.python.org/3/library/asyncio-task.html#asyncio-awaitables) in the `aws` sequence concurrently.
+- If all awaitables succeed, it returns a Python list of results in the same order as `aws`.
+- `return_exceptions` controls how exceptions are handled:
+  - If `False` (default): the first exception is raised immediately to the caller waiting on `gather()`. Other awaitables are not automatically cancelled and may continue running.
+  - If `True`: exceptions are returned in the result list (instead of being raised immediately), alongside successful results.
 
-- Richer and fuller responses where available.
-- Asynchronous and event-driven modes in addition to synchronous usage.
-- Logical content modules for market data domains.
+In default mode (`return_exceptions=False`), your code may stop at the first error and not automatically collect outcomes from the other still-running awaitables. This can leave unfinished or uncollected task outcomes that are easy to miss. To handle this pattern safely, an application must keep task references and explicitly inspect task status/results when needed manually.
 
-Historical Pricing uses definition objects and supports both get_data (sync) and get_data_async (async).
+That is why many applications use `asyncio.gather(..., return_exceptions=True)` when they need complete visibility of both success and failure results in one place.
 
-## Using asyncio.gather
+In this example, I use `historical_pricing.events.Definition`, which returns Historical Pricing Events data similar to the Data Platform `/data/historical-pricing/v1/views/events/` endpoint.
 
-A direct way to request data concurrently is combining Historical Pricing get_data_async calls with [asyncio.gather(*aws)](https://docs.python.org/3/library/asyncio-task.html#asyncio.gather).
+The first step is to define a `display_response` method to display returned historical data as a DataFrame.
 
-await asyncio.gather(*aws, return_exceptions=False)
-
-- Runs awaitables concurrently.
-- Returns results in the same order as inputs when all succeed.
-- return_exceptions controls failure behavior:
-  - False (default): first exception is raised immediately.
-  - True: exceptions are returned in the results list.
-
-For full visibility of both successes and failures, return_exceptions=True is often preferred for batch workloads.
-
-In this example, the code uses historical_pricing.events.Definition.
-
-## Helper: Display Responses Safely
+### Helper: Display Responses Safely
 
 ```python
 def display_response(data):
@@ -269,9 +245,26 @@ def display_response(data):
             print(f"Request failed - HTTP status: {api_response.http_status}")
 ```
 
-Compared to simpler examples that only check response success, this helper also handles Python exceptions returned by gather(..., return_exceptions=True).
 
-## Request Data with gather: Events Example
+You may notice that the `display_response` method above is more defensive than the one used in [EX-2.01.02-HistoricalPricing-ParallelRequests.ipynb](https://github.com/LSEG-API-Samples/Example.DataLibrary.Python/blob/lseg-data-examples/Examples/2-Content/2.01-HistoricalPricing/EX-2.01.02-HistoricalPricing-ParallelRequests.ipynb), which only checks whether each response is successful.
+
+```python
+def display_reponse(response):
+    print(response)
+    print("\nReponse received for", response.closure)
+    if response.is_success:
+        display(response.data.df)
+    else:
+        print(response.http_status)
+```
+
+This `display_response`  handles Python exceptions that can appear in the returned list when using `asyncio.gather(..., return_exceptions=True)`, in addition to HTTP-level failures. This makes concurrent request handling easier to debug and safer in real applications.
+
+### Requesting Data
+
+Next, we group multiple calls to the `get_data_async` method with `asyncio.gather()` and run them as awaitable coroutines.
+
+I am demonstrating with `historical_pricing.events.Definition` definition.
 
 ```python
 # Convert dictionary keys to a list of RIC symbols (kept for quick inspection/debugging).
@@ -301,11 +294,15 @@ except* LDError as errors:
         print(error)
 ```
 
-When sending multiple single-RIC requests, each RIC returns one corresponding response object, and gather returns a list.
+![event definition dataframe results](/images/04_dataframe_1.png)
+
+When sending multiple Historical Pricing Definition with **a single RIC** request, each RIC gets its own data response grouping together sequently in a Python *list* returns from `await tasks` statement.
 
 ```python
 print(f" Data type is {type(historical_data)} and length is {len(historical_data)}")
 ```
+
+[image here]
 
 You can extract a specific company response by closure label.
 
@@ -317,7 +314,9 @@ next(
 )
 ```
 
-## Request Data with gather: Summaries Example
+[image here]
+
+### Request Data with gather: Summaries Example
 
 ```python
 try:
