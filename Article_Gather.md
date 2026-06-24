@@ -157,7 +157,7 @@ ld_session.open()
 # 
 ```
 
-If the library can open the session successfully, you should see the **<OpenState.Opened: 'Opened'>** output message. 
+If the library can open the session successfully, you should see the **<OpenState.Opened: 'Opened'>** output message. The library automatic manage the authentication, access token, refresh token, etc. for an application.
 
 The next step is creating the data request variables such as dictionary of company RICs and Name, request fields, etc. 
 
@@ -193,7 +193,7 @@ INTRADAY_FIELDS = ["TRDPRC_1", "BID", "ASK"]
 INTERDAY_FIELDS = ["BID", "ASK", "OPEN_PRC", "HIGH_1", "LOW_1", "TRDPRC_1", "NUM_MOVES", "TRNOVR_UNS"]
 ```
 
-### Using asyncio.gather
+### Using asyncio.gather with return_exceptions = True
 
 That brings us to the most to the most direct and easiest way to request historical data concurrently, combine Historical Pricing `get_data_async` calls with [`asyncio.gather(*aws)`](https://docs.python.org/3/library/asyncio-task.html#asyncio.gather) method.
 
@@ -281,28 +281,33 @@ try:
             historical_pricing.events.Definition(universe=ric, fields=EVENT_FIELDS, count=5).get_data_async(closure=company)
             for ric, company in list_of_rics_companies[0:3]
         ],
-        return_exceptions=True  # Collect all outcomes.
+        return_exceptions=True  # Prevent gather from raising immediately on the first exception; we want to collect all results.
     )
 
     # Wait for the entire batch to finish and collect all response objects.
+    # Default gather behavior: if any task raises an exception, it is raised at this await line.
     historical_data = await tasks  # pylint: disable=await-outside-async
 
+    # Display a section header before printing each response output.
     display(Markdown("**Companies Historical Price Events**"))
+    # Show each response DataFrame on success; otherwise print the HTTP status code.
     display_response(historical_data)
 except* LDError as errors:
     for error in errors.exceptions:
         print(error)
 ```
 
+The result is as follows:
+
 ![event definition dataframe results](/images/04_dataframe_1.png)
 
-When sending multiple Historical Pricing Definition with **a single RIC** request, each RIC gets its own data response grouping together sequently in a Python *list* returns from `await tasks` statement.
+Please be noticed that when sending multiple Historical Pricing Definition with **a single RIC** request, each RIC gets its own data response grouping together sequently in a Python *list* returns from `await tasks` statement.
 
 ```python
 print(f" Data type is {type(historical_data)} and length is {len(historical_data)}")
 ```
 
-[image here]
+![datatype is list when length of number of results](/images/05_dataframe_2.png)
 
 You can extract a specific company response by closure label.
 
@@ -314,7 +319,7 @@ next(
 )
 ```
 
-[image here]
+![NVIDIA dataframe](/images/06_dataframe_3.png)
 
 ### Request Data with gather: Summaries Example
 
@@ -342,11 +347,18 @@ except* LDError as errors:
         print(error)
 ```
 
-## How return_exceptions=True Handles Errors
+![Intraday data example](/images/07_dataframe_4.png)
 
-With return_exceptions=True, successes and failures are returned together in one list.
+### How return_exceptions=True Handles Errors
 
-### Invalid and Non-Permission RICs
+Now, what about what if there are errors occur?  With `return_exceptions=True` option, successes and failures are returned together in one list.
+
+When using `asyncio.gather` method with `return_exceptions=True` option, the errors and exceptions are returns in the result list along side the success ones. 
+
+
+#### Invalid and Non-Permission RICs
+
+I am demonstrating with the invalid RIC code `INVALID_RIC` and non-permission RIC (`ASML.L` for ASML Holding, your permission may be different) requests.
 
 ```python
 invalid_instrument_cases = {
@@ -382,12 +394,18 @@ except* LDError as errors:
         print(error)
 ```
 
-Typical outcomes include:
+![invalid and non-permission RIC request](/images/08_dataframe_5.png)
 
-- INVALIDRIC.O: instrument not found.
-- ASML.AS: user permission denied for the instrument.
+You can see that the results include both successful responses and error messages:
 
-### Invalid Fields
+- `INVALIDRIC.O` returns `The universe is not found.. Requested ric: INVALIDRIC.O` message, which means the instrument was not found.
+- `ASML.AS` returns `User has no permission.. Requested ric: ASML.AS` message, which means the user does not have permission to access that instrument.
+
+These error messages appear alongside the historical data returned for the successful requests.
+
+#### Invalid Fields
+
+Now let's see how the library handles invalid fields with the `asyncio.gather`.
 
 ```python
 EVENT_FIELDS_WITH_INVALID = EVENT_FIELDS + ["INVALID_FIELD"]
@@ -410,7 +428,9 @@ except* LDError as errors:
         print(error)
 ```
 
-The library can handle mixed valid/invalid fields in one request; invalid fields are omitted from response.data.df. You can inspect field-level errors in response.data.raw.
+![request invalid fields](/images/09_dataframe_6.png)
+
+The library can handle mixed valid/invalid fields in one request; invalid fields are omitted from response.data.df. You can inspect field-level errors in `response.data.raw` statement which give you the raw JSON response message.
 
 ```python
 historical_data[0].data.raw
@@ -419,13 +439,42 @@ historical_data[0].data.raw
 Example raw error payload:
 
 ```json
+{'universe': {'ric': 'VOD.L'},
+ 'adjustments': ['exchangeCorrection', 'manualCorrection'],
+ 'defaultPricingField': 'TRDPRC_1',
+ 'qos': {'timeliness': 'delayed'},
+ 'headers': [{'name': 'DATE_TIME', 'type': 'string'},
+  {'name': 'EVENT_TYPE', 'type': 'string'},
+  {'name': 'TRDPRC_1', 'type': 'number', 'decimalChar': '.'},
+  {'name': 'TRDVOL_1', 'type': 'number', 'decimalChar': '.'}],
+ 'data': [['2026-06-17T07:02:03.966000000Z', 'trade', 110.65, 2.69317668],
+  ['2026-06-17T07:02:03.966000000Z', 'trade', 110.65, 2.0876638],
+  ['2026-06-17T07:02:03.940000000Z', 'trade', 110.55, 201],
+  ['2026-06-17T07:02:03.939000000Z', 'trade', 110.55, 2000],
+  ['2026-06-17T07:02:02.919000000Z', 'trade', 110.629, 4488]],
+ 'status': {'code': 'TS.Intraday.UserRequestError.90006',
+  'message': 'The universe does not support the following fields: [INVALID_FIELD].'},
+ 'meta': {'blendingEntry': {'headers': [{'name': 'COLLECT_DATETIME',
+     'type': 'string'},
+    {'name': 'RTL', 'type': 'number', 'decimalChar': '.'},
+    {'name': 'SOURCE_DATETIME', 'type': 'string'},
+    {'name': 'SEQNUM', 'type': 'string'}],
+   'data': [['2026-06-17T07:17:01.821000000Z',
+     17344,
+     '2026-06-17T07:17:01.821000000Z',
+     '389367']]}}}
+```
+
+You see that the error is available in raw data result from the platform. You can use the raw information to inform users if you need.
+
+```json
 {
   "code": "TS.Intraday.UserRequestError.90006",
   "message": "The universe does not support the following fields: [INVALID_FIELD]."
 }
 ```
 
-If all fields are invalid, the request fails.
+Please note that if you send a request with only invalid fields (either one invalid field or a list of all invalid fields), the request fails and returns an error to the application.
 
 ```python
 try:
@@ -447,90 +496,103 @@ except* LDError as errors:
         print(error)
 ```
 
-## Can Events and Summaries Be Mixed in One gather Call?
+![single invalid field request](/images/10_dataframe_7.png)
 
-Yes. Events and Summaries requests can be run concurrently in a single gather call.
+That covers how the `return_exception=True` option and Data Library handle errors.
 
-See the parallel requests example in the official content-layer samples:
-https://github.com/LSEG-API-Samples/Example.DataLibrary.Python/blob/lseg-data-examples/Examples/2-Content/2.01-HistoricalPricing/EX-2.01.02-HistoricalPricing-ParallelRequests.ipynb
+### Can Events and Summaries Be Mixed in One gather Call?
+
+Off cause, you can. Please see an example (with `return_exception=False`) in the [Content layer - How to send parallel requests](https://github.com/LSEG-API-Samples/Example.DataLibrary.Python/blob/lseg-data-examples/Examples/2-Content/2.01-HistoricalPricing/EX-2.01.02-HistoricalPricing-ParallelRequests.ipynb) example on GitHup repository.
+
+That is all I want to say about the Data Library Historical Pricing with Asyncio Gather method.
+
+Now we come to the last section of the code, you can close the session with the following statements.
 
 ## Close the Session
 
 ```python
-# Close the session to release resources.
+# Close the session to release resources; in a long-running application, consider keeping the session open and reusing it for subsequent API calls instead.
 ld_session.close()
 ld.close_session()
 ```
 
 ## What About List-of-RIC Requests?
 
-Historical Pricing definition universe accepts both single RIC and list-of-RIC inputs.
+The Historical Pricing definitions universe parameter accept both single-RIC and list-of-RICs inputs.
 
-Single-RIC approach (recommended):
+**Single-RIC approach** (recommended): Each request returns its own dataframe and raw json response, making it easy to handle successes and failures individually.
 
-- Each request returns its own dataframe and raw JSON.
-- Success and failure handling is straightforward per instrument.
+**List-of-RICs approach**: A single request returns a [multi-index](https://pandas.pydata.org/docs/user_guide/advanced.html#multiindex-advanced-indexing) dataframe with data from all RICs combined along with an array of JSON data. This is harder to manage and parse errors per individual instrument.
 
-List-of-RIC approach:
-
-- One request returns a multi-index dataframe with all RICs combined.
-- Error handling and per-instrument parsing are harder.
-
-Recommendation: Use multiple single-RIC requests with asyncio.gather for better control and diagnostics.
+**Recommendation**: Use multiple single-RIC requests with `asyncio.gather()` for better data handling, as each instrument’s success or failure can be handled independently.
 
 ## Summary: Data Library Historical Pricing with Asyncio Gather
 
-asyncio.gather(..., return_exceptions=True) is practical for concurrent batch requests when you need full visibility of all outcomes.
+That brings us to a summary of using Asyncio Gather method. The `asyncio.gather(..., return_exceptions=True)` pattern is practical for concurrent batch requests when you need full visibility of all outcomes (success and fail).
 
 ### What it does
 
 - Runs all request coroutines concurrently.
-- Returns a result list in input order.
-- Includes both successful responses and exceptions.
+- Returns one result list in the same order as the input coroutines.
+- Keeps successful responses and exceptions together in that list, instead of failing immediately on the first error.
 
 ### Why this is useful
 
-- Process valid instruments even when some requests fail.
-- Centralize error handling for batch workflows.
-- Build clearer logs and user-facing reports.
+- You can still process valid instruments even when some requests fail.
+- Error handling is simpler for batch workflows because all outcomes are collected in one place.
+- It is easier to build clear logs and user-friendly reports from a single result list.
 
-### How to process results safely
+### How to read the results safely
 
-- Iterate each result item.
-- If it is an exception, record/report it.
-- If it is a response, process response.data.df.
+- Check each item in the returned list.
+- If the item is an exception, record or print the error message.
+- If the item is a successful response, process `response.data.df` as usual.
 
 ### Good use cases
 
 - Best-effort batch requests across many RICs.
-- Monitoring jobs where partial results are useful.
-- Exploratory runs where both data and errors are needed.
+- Monitoring jobs where partial data is still valuable.
+- Exploratory workflows where you want both data and errors in one run.
 
 ### Performance note
 
-See notebook/ld_notebook_gather_performance.ipynb for a 30-instrument interday performance demonstration.
+See [notebook/ld_notebook_gather_performance.ipynb](https://github.com/LSEG-API-Samples/Example.RDP.DataLibrary.Python.Async/blob/main/notebook/ld_notebook_gather_performance.ipynb) example for a 30-instrument interday performance demonstration.
 
-The demo uses response.data.raw to display raw JSON output. If you use response.data.df, additional processing time is needed to build DataFrames from JSON.
+The performance demo uses `response.data.raw` statement to display raw JSON output. If you use `response.data.df` statement to get data as a Dataframe, additional processing time is needed to build DataFrames from JSON.
 
 ### Important note
 
-return_exceptions=True does not hide errors. It returns errors as list items, so your code must explicitly handle both successes and exceptions.
+The `return_exceptions=True` option does not hide errors. It returns errors as list items, so your code must explicitly handle both successes and exceptions.
 
 ## Is asyncio.gather the Only Concurrency Option?
 
-No. asyncio.gather is common, but not the only option.
+No. While `asyncio.gather()` method is widely used, but it is not the only option for running concurrent tasks.
 
-Alternatives:
+Depending on your application requirements, you can also use:
+- `asyncio.create_task(...)` + explicit `await`: start tasks immediately and await them when appropriate.
+- `asyncio.as_completed(...)`: process results as each task finishes.
+- `asyncio.wait(...)`: apply lower-level coordination, such as timeouts or partial completion.
+- `asyncio.to_thread(...)` / executors: move blocking I/O or CPU-intensive work outside the event loop.
+- `asyncio.TaskGroup` (Python 3.11+): use structured concurrency with safer and clearer task lifecycle management.
 
-- asyncio.create_task(...) plus explicit await.
-- asyncio.as_completed(...) to process results as tasks finish.
-- asyncio.wait(...) for lower-level coordination and timeouts.
-- asyncio.to_thread(...) or executors for blocking work.
-- asyncio.TaskGroup (Python 3.11+) for structured concurrency.
+Among these approaches, `TaskGroup` is now a common choice and is frequently compared with `gather` in modern asyncio design discussions for safer task lifecycle management.
 
-TaskGroup is a modern approach often compared with gather for safer task lifecycle management.
-
+That’s all I have to say about using the Historical Pricing `get_data_async` method with the Python `asyncio.gather()` method.
 
 ### What Next?
 
 Please wait for how to use Data Library Historical Pricing `get_data_async` with `asyncio.TaskGroup` in the next article.
+
+## Should I use Data Library or the manual HTTP REST API Coding?
+
+Before I finish, there is one point lef, should you use the Data Library or the manual HTTP REST coding? 
+
+If you are using Python, C#/.NET, or TypeScript, the Data Library offers the following advantages over working directly with the HTTP REST APIs:
+
+1. The Library automatically manages Data Platform authentication and sessions for you, so you do not need to handle sign-in, session expiration, or access-token refresh manually.
+2. The Library provides developer-friendly interfaces for sending HTTP data requests. These interfaces range from simple one-line methods in the Access Layer, to richer methods in the Content Layer for more advanced use cases, to lower-level Delivery Layer methods that let you control headers, URLs, parameters, and request bodies while still handling authentication for the application.
+
+However, if you prefer to manage authentication and sessions yourself, or if you are using another programming language such as Java, Go, Rust, Ruby, or C++, the Data Platform HTTP REST APIs are also straightforward and easy to use.
+
+That covers all I wanted to say today. 
+

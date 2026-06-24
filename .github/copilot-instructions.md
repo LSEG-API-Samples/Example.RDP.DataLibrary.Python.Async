@@ -39,6 +39,7 @@ Before running setup commands, confirm the project structure should match this l
 ├── images/
 ├── LICENSE.md
 ├── README.md
+├── Article_Gather.md
 ├── requirements.txt
 ├── .venv/
 └── notebook/
@@ -61,6 +62,7 @@ Notes:
 
    - `README.md`
    - `LICENSE.md`
+   - `Article_Gather.md`
    - `.gitignore` (must include `.venv/` and `notebook/.env` entries)
    - `images/` (folder must exist)
    - `notebook/` (folder must exist)

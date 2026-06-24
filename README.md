@@ -54,15 +54,17 @@ Please your LSEG representative or account manager for the Data Platform Access
 ```
 .
 ├── notebook/
-│   ├── ld_notebook_async_gather.ipynb    # Main notebook
-│   ├── lseg-data.config.json             # Data Library logging configuration
-│   ├── .env                              # Platform Session credentials (not committed)
-│   └── .env.example                      # Credentials template
-├── images                                # Project images folder
-├── .venv                                 # Project Python virtual environment
-├── LICENSE.md                            # Project License
-├── requirements.txt                      # Pinned Python dependencies
-└── README.md
+│   ├── ld_notebook_async_gather.ipynb          # Main notebook
+│   ├── ld_notebook_gather_performance.ipynb    # Asyncio Gather performance notebook
+│   ├── lseg-data.config.json                   # Data Library logging configuration
+│   ├── .env                                    # Platform Session credentials (not committed)
+│   └── .env.example                            # Credentials template
+├── images                                      # Project images folder
+├── .venv                                       # Project Python virtual environment
+├── LICENSE.md                                  # Project License
+├── requirements.txt                            # Pinned Python dependencies
+├── Article_Gather.md                           # The Asyncio Gather with Data Library article document
+└── README.md                                   # The Project README file
 ```
 
 ---
