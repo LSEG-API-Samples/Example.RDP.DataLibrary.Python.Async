@@ -4,6 +4,8 @@
 
 This article is a semi-sequel to my [Concurrent Data Platform API Calls with Python Asyncio and HTTPX](https://github.com/LSEG-API-Samples/Example.RDP.Python.Async.HTTPX) article. That article shows how to use Python and the [HTTPX](https://www.python-httpx.org/) library to make concurrent HTTP REST requests to LSEG [Data Platform](https://developers.lseg.com/en/api-catalog/refinitiv-data-platform/refinitiv-data-platform-apis) asynchronously. This project shifts away from manually sending HTTP REST requests and instead uses the easy-to-use [LSEG Data Library for Python](https://developers.lseg.com/en/api-catalog/lseg-data-platform/lseg-data-library-for-python). The Data Library for Python Historical Pricing module offers the `get_data_async` method to request historical data asynchronously, letting developers send multiple requests concurrently without blocking the process.
 
+There is already a [Content layer - How to send parallel requests](https://github.com/LSEG-API-Samples/Example.DataLibrary.Python/blob/lseg-data-examples/Examples/2-Content/2.01-HistoricalPricing/EX-2.01.02-HistoricalPricing-ParallelRequests.ipynb) example on GitHup. However, this article provides a more in-depth exploration of making parallel requests using asyncio, offering additional details and greater flexibility beyond what is covered in the original example.
+
 **Note**: This article is based on the Data Library for Python version 2.1.1 using the Platform Session. The library behavior might change in future releases.
 
 ## What are Data Platform APIs?
@@ -209,8 +211,6 @@ In default mode (`return_exceptions=False`), your code may stop at the first err
 
 That is why many applications use `asyncio.gather(..., return_exceptions=True)` when they need complete visibility of both success and failure results in one place.
 
-In this example, I use `historical_pricing.events.Definition`, which returns Historical Pricing Events data similar to the Data Platform `/data/historical-pricing/v1/views/events/` endpoint.
-
 The first step is to define a `display_response` method to display returned historical data as a DataFrame.
 
 ### Helper: Display Responses Safely
@@ -260,11 +260,13 @@ def display_reponse(response):
 
 This `display_response`  handles Python exceptions that can appear in the returned list when using `asyncio.gather(..., return_exceptions=True)`, in addition to HTTP-level failures. This makes concurrent request handling easier to debug and safer in real applications.
 
-### Requesting Data
+### Requesting Data with Request Limits
 
-Next, we group multiple calls to the `get_data_async` method with `asyncio.gather()` and run them as awaitable coroutines.
+Next, we group multiple calls to the `get_data_async` method with `asyncio.gather()` and run them as awaitable coroutines. You can combine `asyncio.gather()` method with [`asyncio.Semaphore`](https://docs.python.org/3/library/asyncio-sync.html#asyncio.Semaphore) to cap the number of requests in-flight at any given time (default: 3).
 
-I am demonstrating with `historical_pricing.events.Definition` definition.
+If you are requesting just 2-10 RICs, the backend can handle it without issue. However, as the number of simultaneous requests grows to 30,50,100 or more, a semaphore becomes essential to stay within the platform's rate limits. The following example demonstrates this pattern with 20 RICs.
+
+I am demonstrating with `historical_pricing.events.Definition` which returns Historical Pricing Events data similar to the Data Platform `/data/historical-pricing/v1/views/events/` endpoint.
 
 ```python
 # Convert dictionary keys to a list of RIC symbols (kept for quick inspection/debugging).
@@ -273,28 +275,38 @@ rics = list(INSTRUMENTS.keys())
 # Convert dictionary items to (RIC, company) pairs so each request can carry a readable label.
 list_of_rics_companies = list(INSTRUMENTS.items())
 
+throttle_limit = 10
+semaphore = asyncio.Semaphore(throttle_limit)  # Number of simultaneous tasks to run
+
+async def fetch_event_with_throttle(ric, company):
+    """Request event data for one RIC with semaphore throttling."""
+    async with semaphore:
+        return await historical_pricing.events.Definition(
+            universe=ric,
+            fields=EVENT_FIELDS,
+            count=5
+        ).get_data_async(closure=company)
+
 try:
-    # Create a concurrent batch of event requests for the first three instruments.
-    # The star-unpack passes each coroutine as a separate argument to gather.
-    tasks = asyncio.gather(
-        *[
-            historical_pricing.events.Definition(universe=ric, fields=EVENT_FIELDS, count=5).get_data_async(closure=company)
-            for ric, company in list_of_rics_companies[0:3]
-        ],
-        return_exceptions=True  # Prevent gather from raising immediately on the first exception; we want to collect all results.
+    # Create a concurrent batch of event requests with a semaphore limit.
+    tasks = [
+        fetch_event_with_throttle(ric, company)
+        for ric, company in list_of_rics_companies[0:20]
+    ]
+
+    historical_data = await asyncio.gather(  # pylint: disable=await-outside-async
+        *tasks,
+        return_exceptions=True
     )
 
-    # Wait for the entire batch to finish and collect all response objects.
-    # Default gather behavior: if any task raises an exception, it is raised at this await line.
-    historical_data = await tasks  # pylint: disable=await-outside-async
-
-    # Display a section header before printing each response output.
-    display(Markdown("**Companies Historical Price Events**"))
-    # Show each response DataFrame on success; otherwise print the HTTP status code.
+    # Show a title for this batch.
+    display(Markdown(f"**Companies Historical Price Events with Throttle {throttle_limit}**"))
+    # Print each result: DataFrame on success, status/error on failure.
     display_response(historical_data)
 except* LDError as errors:
     for error in errors.exceptions:
         print(error)
+
 ```
 
 The result is as follows:
@@ -321,26 +333,125 @@ next(
 
 ![NVIDIA dataframe](/images/06_dataframe_3.png)
 
-### Request Data with gather: Summaries Example
+### Understanding asyncio.gather with return_exceptions=True
+
+This section combines request throttling (`asyncio.Semaphore`) with `asyncio.gather(..., return_exceptions=True)` so the full batch completes even if some requests fail.
+
+#### Why use return_exceptions=True
+
+With `return_exceptions=True`, `asyncio.gather` returns one list that may contain both:
+
+- successful response objects
+- exception objects for failed tasks
+
+This behavior is useful for batch workflows because one failed request does not stop the remaining requests.
+
+#### How to read the returned data safely
+
+After:
 
 ```python
+historical_data = await asyncio.gather(*tasks, return_exceptions=True)
+```
+
+iterate through each item and handle by type:
+
+1. If the item is an `Exception`, log or report it.
+2. If it is a successful API response (`response.is_success`), read data from `response.data.df`.
+3. If the API response is not successful, inspect `response.http_status`.
+
+The helper `display_response(historical_data)` method in this notebook already follows this defensive pattern.
+
+#### How to get data for one instrument
+
+Each request uses `closure=company`, so you can retrieve one instrument by matching `closure`:
+
+```python
+next(
+    response.data.df
+    for response in historical_data
+    if getattr(response, "closure", None) == "NVIDIA"
+)
+```
+
+#### Where Semaphore fits
+
+When sending a large number of concurrent requests, an `asyncio.Semaphore` is **required** to avoid exceeding the platform's backend rate limit. Without it, all coroutines are submitted to the event loop simultaneously, and the platform will respond with HTTP **429 Too Many Requests** errors.
+
+##### How it works
+
+A semaphore is a counter that allows at most *N* coroutines to hold it at the same time. Any coroutine that attempts to acquire the semaphore when the counter is exhausted will suspend and wait until another coroutine releases it.
+
+```
+asyncio.Semaphore(N)  →  at most N HTTP requests in-flight at any time
+```
+
+##### Key points
+
+- **Define the semaphore once** outside the helper function and close over it — do not create a new instance per call.
+- **Wrap `await get_data_async(...)`** inside `async with semaphore:` — this is the only critical section that needs throttling.
+- **The semaphore controls concurrency inside each coroutine**, not inside `asyncio.gather` itself. Pass the coroutine list to `gather` as usual.
+- **Tune N to your account tier.** A value between 5 and 10 is a safe starting point for most Data Platform accounts. Reduce it further if you continue to see 429 responses.
+
+##### Pattern recap
+
+```python
+semaphore = asyncio.Semaphore(10)   # cap: at most 10 simultaneous in-flight requests
+
+async def fetch_with_throttle(ric, company):
+    async with semaphore:            # suspends here when 10 requests are already in-flight
+        return await historical_pricing.events.Definition(
+            universe=ric, fields=EVENT_FIELDS, count=5
+        ).get_data_async(closure=company)
+
+historical_data = await asyncio.gather(
+    *[fetch_with_throttle(ric, company) for ric, company in list_of_rics_companies],
+    return_exceptions=True
+)
+```
+
+Using both together gives controlled concurrency and complete result visibility.
+
+### What about Historical Pricing Summaries Definition?
+
+You can use the `asyncio.gather` with `historical_pricing.summaries.Definition` definition as well. I am demonstrating with the *intraday* data request which similar from Data Platform `/data/historical-pricing/v1/views/intraday-summaries/` endpoint.
+
+```python
+throttle_limit = 10
+semaphore = asyncio.Semaphore(throttle_limit)  # Number of simultaneous tasks to run
+
+
+async def fetch_intraday_with_throttle(ric, company):
+    """Fetch intraday data for a given RIC and company with concurrency limit."""
+    async with semaphore:
+        return await historical_pricing.summaries.Definition(
+            universe=ric,
+            fields=INTRADAY_FIELDS,
+            count=5,
+            interval=Intervals.FIVE_MINUTES,
+        ).get_data_async(closure=company)
+
+
 try:
-    tasks = asyncio.gather(
-        *[
-            historical_pricing.summaries.Definition(
-                universe=ric,
-                fields=INTRADAY_FIELDS,
-                count=5,
-                interval=Intervals.FIVE_MINUTES
-            ).get_data_async(closure=company)
-            for ric, company in list_of_rics_companies[3:6]
-        ],
+    # Create a concurrent batch of intraday requests with a semaphore limit.
+    tasks = [
+        fetch_intraday_with_throttle(ric, company)
+        for ric, company in list_of_rics_companies[10:30]
+    ]
+
+    historical_data = await asyncio.gather(  # pylint: disable=await-outside-async
+        *tasks,
         return_exceptions=True
     )
 
-    historical_data = await tasks  # pylint: disable=await-outside-async
-
-    display(Markdown("**Companies Historical Price Intraday data (5-minute intervals)**"))
+    # Show a title for this batch.
+    display(
+        Markdown(
+            "**Companies Historical Price Intraday data (5-minute intervals) "
+            f"with Throttle {throttle_limit}**"
+        )
+    )
+    # Print each result: DataFrame on success, status/error on failure.
     display_response(historical_data)
 except* LDError as errors:
     for error in errors.exceptions:
@@ -351,10 +462,9 @@ except* LDError as errors:
 
 ### How return_exceptions=True Handles Errors
 
-Now, what about what if there are errors occur?  With `return_exceptions=True` option, successes and failures are returned together in one list.
+When using `asyncio.gather` with `return_exceptions=True`, the errors and exceptions are returns in the result list along side the success ones. 
 
-When using `asyncio.gather` method with `return_exceptions=True` option, the errors and exceptions are returns in the result list along side the success ones. 
-
+**Note**: This error-handling example uses only a small number of RICs, so `asyncio.Semaphore` is not required in this section.
 
 #### Invalid and Non-Permission RICs
 
@@ -554,6 +664,13 @@ That brings us to a summary of using Asyncio Gather method. The `asyncio.gather(
 - Monitoring jobs where partial data is still valuable.
 - Exploratory workflows where you want both data and errors in one run.
 
+### Throttle Requests
+
+- Always use `asyncio.Semaphore` to control how many requests are in-flight at the same time.
+- Place the semaphore inside each request coroutine (`async with semaphore:`), not around `asyncio.gather(...)`.
+- Start with a conservative limit (for example, 5-10), then tune based on your account limits and observed behavior.
+- If you see HTTP 429 (Too Many Requests), reduce the semaphore limit and retry.
+
 ### Performance note
 
 For a performance comparison, refer to the [Historical Pricing get_data_async with Asyncio.Gather Performance](https://github.com/LSEG-API-Samples/Example.RDP.DataLibrary.Python.Async/blob/main/notebook/ld_notebook_gather_performance.ipynb) and [Data Library Get History Synchronous Performance](https://github.com/LSEG-API-Samples/Example.RDP.DataLibrary.Python.Async/blob/main/notebook/ld_notebook_gethistory_performance.ipynb) examples, both of which retrieve interday historical data for 30 instruments.
@@ -595,7 +712,7 @@ Please wait for how to use Data Library Historical Pricing `get_data_async` with
 
 Before I finish, there is one point lef, should you use the Data Library or the manual HTTP REST coding? 
 
-If you are using Python, C#/.NET, or TypeScript, the Data Library offers the following advantages over working directly with the HTTP REST APIs:
+If you are using [Python](https://developers.lseg.com/en/api-catalog/lseg-data-platform/lseg-data-library-for-python), [C#/.NET](https://developers.lseg.com/en/api-catalog/lseg-data-platform/lseg-data-library-for-net), or [TypeScript](https://developers.lseg.com/en/api-catalog/lseg-data-platform/lseg-data-library-for-typescript), the Data Library offers the following advantages over working directly with the HTTP REST APIs:
 
 1. The Library automatically manages Data Platform authentication and sessions for you, so you do not need to handle sign-in, session expiration, or access-token refresh manually.
 2. The Library provides developer-friendly interfaces for sending HTTP data requests. These interfaces range from simple one-line methods in the Access Layer, to richer methods in the Content Layer for more advanced use cases, to lower-level Delivery Layer methods that let you control headers, URLs, parameters, and request bodies while still handling authentication for the application.
