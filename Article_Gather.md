@@ -556,9 +556,17 @@ That brings us to a summary of using Asyncio Gather method. The `asyncio.gather(
 
 ### Performance note
 
-See [notebook/ld_notebook_gather_performance.ipynb](https://github.com/LSEG-API-Samples/Example.RDP.DataLibrary.Python.Async/blob/main/notebook/ld_notebook_gather_performance.ipynb) example for a 30-instrument interday performance demonstration.
+For a performance comparison, refer to the [Historical Pricing get_data_async with Asyncio.Gather Performance](https://github.com/LSEG-API-Samples/Example.RDP.DataLibrary.Python.Async/blob/main/notebook/ld_notebook_gather_performance.ipynb) and [Data Library Get History Synchronous Performance](https://github.com/LSEG-API-Samples/Example.RDP.DataLibrary.Python.Async/blob/main/notebook/ld_notebook_gethistory_performance.ipynb) examples, both of which retrieve interday historical data for 30 instruments.
 
-The performance demo uses `response.data.raw` statement to display raw JSON output. If you use `response.data.df` statement to get data as a Dataframe, additional processing time is needed to build DataFrames from JSON.
+Please note that both examples measure retrieval time only, excluding display overhead.
+
+**Historical Pricing get_data_async with Asyncio.Gather Performance**
+
+![Historical Pricing get_data_async with Asyncio.Gather Performance](/images/11_gather_perf.png)
+
+**Data Library Get History Synchronous Performance**
+
+![Data Library Get History Synchronous Performance](/images/12_get_history_sync_perf.png)
 
 ### Important note
 
