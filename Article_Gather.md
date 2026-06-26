@@ -645,7 +645,7 @@ ld_session.close()
 ld.close_session()
 ```
 
-## What About List-of-RIC Requests?
+## What About List-of-RICs Request?
 
 The Historical Pricing definitions universe parameter accept both single-RIC and list-of-RICs inputs.
 
