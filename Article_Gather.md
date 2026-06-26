@@ -128,7 +128,6 @@ import pandas as pd
 pd.set_option("future.no_silent_downcasting", True)
 ```
 
-
 ### Open a Platform Session
 
 Moving on to the next step, create a Data Library session object to authenticate, manage the connection, and retrieve data.
@@ -260,18 +259,108 @@ def display_reponse(response):
 
 This `display_response`  handles Python exceptions that can appear in the returned list when using `asyncio.gather(..., return_exceptions=True)`, in addition to HTTP-level failures. This makes concurrent request handling easier to debug and safer in real applications.
 
-### Requesting Data with Request Limits
+### Requesting Data with Asyncio.Gather, The Basic Form
 
-Next, we group multiple calls to the `get_data_async` method with `asyncio.gather()` and run them as awaitable coroutines. You can combine `asyncio.gather()` method with [`asyncio.Semaphore`](https://docs.python.org/3/library/asyncio-sync.html#asyncio.Semaphore) to cap the number of requests in-flight at any given time (default: 3).
+Next, we group multiple calls to the `get_data_async` method with `asyncio.gather()` and run them as awaitable coroutines. 
 
-If you are requesting just 2-10 RICs, the backend can handle it without issue. However, as the number of simultaneous requests grows to 30,50,100 or more, a semaphore becomes essential to stay within the platform's rate limits. The following example demonstrates this pattern with 20 RICs.
+I am demonstrating the most basic form of grouping multiple calls using `historical_pricing.events.Definition` for istorical Pricing Events data and `historical_pricing.summaries.Definition` for Historical Pricing Interday data.
 
-I am demonstrating with `historical_pricing.events.Definition` which returns Historical Pricing Events data similar to the Data Platform `/data/historical-pricing/v1/views/events/` endpoint.
+- `historical_pricing.events.Definition` retrieves data from the Data Platform  `/data/historical-pricing/v1/views/events/` endpoint.
+- `historical_pricing.summaries.Definition`, when used with *interday* data, retrieves data from the Data Platform `/data/historical-pricing/v1/views/interday-summaries/` endpoint.
 
 ```python
-# Convert dictionary keys to a list of RIC symbols (kept for quick inspection/debugging).
-rics = list(INSTRUMENTS.keys())
+try:
+    # Run two historical pricing requests concurrently.
+    tasks = asyncio.gather(
+        # Request event data for SpaceX.
+        historical_pricing.events.Definition(universe="SPCX.O", fields=EVENT_FIELDS, count=5).get_data_async(closure="SpaceX"),
+        # Request monthly interday summary data for Tesla.
+        historical_pricing.summaries.Definition(universe="TSLA.O", fields=INTERDAY_FIELDS, count=5, interval=Intervals.MONTHLY).get_data_async(closure="Tesla"),
+        # Return exceptions in the results list instead of stopping early.
+        return_exceptions=True  # Prevents asyncio.gather from raising on the first exception, allowing all tasks to complete
+    )
 
+    # Wait for both requests to finish and collect every result.
+    historical_data = await tasks  # pylint: disable=await-outside-async
+
+    # Display a title before showing the results.
+    display(Markdown("**Historical Data with Async Gather in the Most Basic Form**"))
+    # Show each response, including any returned errors.
+    display_response(historical_data)
+except* LDError as errors:
+    # Print any Data Library errors raised during the batch.
+    for error in errors.exceptions:
+        print(error)
+```
+
+![getting historical pricing data in the basic form](images/04_dataframe1.png)
+
+Please be noticed that when developers send multiple Historical Pricing Definition with **a single RIC** request, each RIC gets its own data response grouping together sequently in a Python *list* returns from `await tasks` statement.
+
+![datatype is list when length of number of results](/images/05_dataframe_2.png)
+
+You can extract a specific company response by closure label.
+
+```python
+next(
+    response.data.df
+    for response in historical_data
+    if getattr(response, "closure", None) == "SpaceX"
+)
+```
+
+![SpaceX dataframe](/images/06_dataframe_3.png)
+
+### Understanding asyncio.gather with return_exceptions=True
+
+The code above shows a basic example of using `asyncio.gather()` with `return_exceptions=True`. The key points are as follows:
+
+#### Why use return_exceptions=True
+
+With `return_exceptions=True`, `asyncio.gather()` returns a single list that may contain both:
+
+- successful response objects
+- exception objects for failed tasks
+
+This behavior is useful for batch workflows because one failed request does not stop the remaining requests.
+
+#### How to read the returned data safely
+
+After:
+
+```python
+historical_data = await asyncio.gather(*tasks, return_exceptions=True)
+```
+
+iterate through each item and handle it by type:
+
+1. If the item is an `Exception`, log or report it.
+2. If it is a successful API response (`response.is_success`), read data from `response.data.df`.
+3. If the API response is not successful, inspect `response.http_status`.
+
+The helper `display_response(historical_data)` method in this notebook already follows this defensive pattern.
+
+#### How to get data for one instrument
+
+Each request uses `closure=company`, so you can retrieve a specific instrument by matching `closure`:
+
+```python
+next(
+    response.data.df,
+    for response in historical_data
+    if getattr(response, "closure", None) == "NVIDIA"
+)
+```
+
+### Requesting Data with Request Limits
+
+Next, we group multiple `get_data_async` calls with `asyncio.gather()` and use [`asyncio.Semaphore`](https://docs.python.org/3/library/asyncio-sync.html#asyncio.Semaphore) to limit the number of in-flight requests at any given time (default: 3).
+
+If you are requesting only 2-10 RICs, the backend can usually handle the load without issue. As the number of simultaneous requests grows to 50, 100, or more, a semaphore becomes essential for staying within the platform's rate limits (see the **Rate Limit** section in the README). The following example demonstrates this pattern with 20 RICs.
+
+The semaphore pattern is recommended when requesting a large number of instruments from the platform.
+
+```python
 # Convert dictionary items to (RIC, company) pairs so each request can carry a readable label.
 list_of_rics_companies = list(INSTRUMENTS.items())
 
@@ -311,68 +400,12 @@ except* LDError as errors:
 
 The result is as follows:
 
-![event definition dataframe results](/images/04_dataframe_1.png)
+![event definition dataframe results](/images/07_dataframe_4.png)
 
-Please be noticed that when sending multiple Historical Pricing Definition with **a single RIC** request, each RIC gets its own data response grouping together sequently in a Python *list* returns from `await tasks` statement.
 
-```python
-print(f" Data type is {type(historical_data)} and length is {len(historical_data)}")
-```
+### Understanding asyncio.gather with asyncio.Semaphore
 
-![datatype is list when length of number of results](/images/05_dataframe_2.png)
-
-You can extract a specific company response by closure label.
-
-```python
-next(
-    response.data.df
-    for response in historical_data
-    if getattr(response, "closure", None) == "NVIDIA"
-)
-```
-
-![NVIDIA dataframe](/images/06_dataframe_3.png)
-
-### Understanding asyncio.gather with return_exceptions=True
-
-This section combines request throttling (`asyncio.Semaphore`) with `asyncio.gather(..., return_exceptions=True)` so the full batch completes even if some requests fail.
-
-#### Why use return_exceptions=True
-
-With `return_exceptions=True`, `asyncio.gather` returns one list that may contain both:
-
-- successful response objects
-- exception objects for failed tasks
-
-This behavior is useful for batch workflows because one failed request does not stop the remaining requests.
-
-#### How to read the returned data safely
-
-After:
-
-```python
-historical_data = await asyncio.gather(*tasks, return_exceptions=True)
-```
-
-iterate through each item and handle by type:
-
-1. If the item is an `Exception`, log or report it.
-2. If it is a successful API response (`response.is_success`), read data from `response.data.df`.
-3. If the API response is not successful, inspect `response.http_status`.
-
-The helper `display_response(historical_data)` method in this notebook already follows this defensive pattern.
-
-#### How to get data for one instrument
-
-Each request uses `closure=company`, so you can retrieve one instrument by matching `closure`:
-
-```python
-next(
-    response.data.df
-    for response in historical_data
-    if getattr(response, "closure", None) == "NVIDIA"
-)
-```
+The code above shows a basic example of using `asyncio.gather()` with `asyncio.Semaphore`. The key points are as follows:
 
 #### Where Semaphore fits
 
@@ -412,9 +445,9 @@ historical_data = await asyncio.gather(
 
 Using both together gives controlled concurrency and complete result visibility.
 
-### What about Historical Pricing Summaries Definition?
+### What about Historical Pricing Summaries Definition and Semaphore?
 
-You can use the `asyncio.gather` with `historical_pricing.summaries.Definition` definition as well. I am demonstrating with the *intraday* data request which similar from Data Platform `/data/historical-pricing/v1/views/intraday-summaries/` endpoint.
+You can use the `asyncio.gather` and `asyncio.Semaphore` with `historical_pricing.summaries.Definition` definition as well. I am demonstrating with the *intraday* request which retrieve the data from Data Platform `/data/historical-pricing/v1/views/intraday-summaries/` endpoint.
 
 ```python
 throttle_limit = 10
@@ -458,7 +491,7 @@ except* LDError as errors:
         print(error)
 ```
 
-![Intraday data example](/images/07_dataframe_4.png)
+![Intraday data example](/images/08_dataframe_5.png)
 
 ### How return_exceptions=True Handles Errors
 
@@ -468,7 +501,7 @@ When using `asyncio.gather` with `return_exceptions=True`, the errors and except
 
 #### Invalid and Non-Permission RICs
 
-I am demonstrating with the invalid RIC code `INVALID_RIC` and non-permission RIC (`ASML.L` for ASML Holding, your permission may be different) requests.
+I am demonstrating with the invalid RIC code `INVALID_RIC` and non-permission RIC (`ASML.L` for ASML Holding, your permission may be different) requests. I am demonstrating with the invalid RIC code `INVALID_RIC` and non-permission RIC (`ASML.L` for ASML Holding, your permission may be different) requests. The definition is `historical_pricing.summaries.Definition` for *interday* data which is similar from Data Platform `/data/historical-pricing/v1/views/interday-summaries/` endpoint.
 
 ```python
 invalid_instrument_cases = {
@@ -504,7 +537,7 @@ except* LDError as errors:
         print(error)
 ```
 
-![invalid and non-permission RIC request](/images/08_dataframe_5.png)
+![invalid and non-permission RIC request](/images/09_dataframe_6.png)
 
 You can see that the results include both successful responses and error messages:
 
@@ -538,7 +571,7 @@ except* LDError as errors:
         print(error)
 ```
 
-![request invalid fields](/images/09_dataframe_6.png)
+![request invalid fields](/images/10_dataframe_7.png)
 
 The library can handle mixed valid/invalid fields in one request; invalid fields are omitted from response.data.df. You can inspect field-level errors in `response.data.raw` statement which give you the raw JSON response message.
 
@@ -557,11 +590,11 @@ Example raw error payload:
   {'name': 'EVENT_TYPE', 'type': 'string'},
   {'name': 'TRDPRC_1', 'type': 'number', 'decimalChar': '.'},
   {'name': 'TRDVOL_1', 'type': 'number', 'decimalChar': '.'}],
- 'data': [['2026-06-17T07:02:03.966000000Z', 'trade', 110.65, 2.69317668],
-  ['2026-06-17T07:02:03.966000000Z', 'trade', 110.65, 2.0876638],
-  ['2026-06-17T07:02:03.940000000Z', 'trade', 110.55, 201],
-  ['2026-06-17T07:02:03.939000000Z', 'trade', 110.55, 2000],
-  ['2026-06-17T07:02:02.919000000Z', 'trade', 110.629, 4488]],
+ 'data': [['2026-06-25T15:53:39.759000000Z', 'trade', 104.8, 5674],
+  ['2026-06-25T15:53:39.569000000Z', 'trade', 105.2839, 25854],
+  ['2026-06-25T15:51:24.000000000Z', 'trade', 104.749, 90211],
+  ['2026-06-25T15:51:24.000000000Z', 'trade', 104.749, 107187],
+  ['2026-06-25T15:51:24.000000000Z', 'trade', 104.749, 251768]],
  'status': {'code': 'TS.Intraday.UserRequestError.90006',
   'message': 'The universe does not support the following fields: [INVALID_FIELD].'},
  'meta': {'blendingEntry': {'headers': [{'name': 'COLLECT_DATETIME',
@@ -569,10 +602,10 @@ Example raw error payload:
     {'name': 'RTL', 'type': 'number', 'decimalChar': '.'},
     {'name': 'SOURCE_DATETIME', 'type': 'string'},
     {'name': 'SEQNUM', 'type': 'string'}],
-   'data': [['2026-06-17T07:17:01.821000000Z',
-     17344,
-     '2026-06-17T07:17:01.821000000Z',
-     '389367']]}}}
+   'data': [['2026-06-25T16:30:00.092000000Z',
+     55760,
+     '2026-06-25T16:30:00.092000000Z',
+     '10857365']]}}}
 ```
 
 You see that the error is available in raw data result from the platform. You can use the raw information to inform users if you need.
@@ -606,13 +639,7 @@ except* LDError as errors:
         print(error)
 ```
 
-![single invalid field request](/images/10_dataframe_7.png)
-
-That covers how the `return_exception=True` option and Data Library handle errors.
-
-### Can Events and Summaries Be Mixed in One gather Call?
-
-Off cause, you can. Please see an example (with `return_exception=False`) in the [Content layer - How to send parallel requests](https://github.com/LSEG-API-Samples/Example.DataLibrary.Python/blob/lseg-data-examples/Examples/2-Content/2.01-HistoricalPricing/EX-2.01.02-HistoricalPricing-ParallelRequests.ipynb) example on GitHup repository.
+![single invalid field request](/images/11_dataframe_8.png)
 
 That is all I want to say about the Data Library Historical Pricing with Asyncio Gather method.
 
@@ -679,11 +706,11 @@ Please note that both examples measure retrieval time only, excluding display ov
 
 **Historical Pricing get_data_async with Asyncio.Gather Performance**
 
-![Historical Pricing get_data_async with Asyncio.Gather Performance](/images/11_gather_perf.png)
+![Historical Pricing get_data_async with Asyncio.Gather Performance](/images/12_gather_perf.png)
 
 **Data Library Get History Synchronous Performance**
 
-![Data Library Get History Synchronous Performance](/images/12_get_history_sync_perf.png)
+![Data Library Get History Synchronous Performance](/images/13_get_history_sync_perf.png)
 
 ### Important note
 
