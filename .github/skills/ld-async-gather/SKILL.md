@@ -1,6 +1,6 @@
 ---
 name: ld-async-gather
-description: "Convert LSEG Data Library synchronous single-RIC loops to concurrent async requests. Use when: migrating sequential historical_pricing.summaries single-RIC loops; fetching historical pricing for multiple RICs concurrently; applying asyncio.gather() or asyncio.TaskGroup() with historical_pricing.summaries; controlling rate limits with semaphore; handling 429 errors; implementing display_response() for async results."
+description: "Convert LSEG Data Library synchronous single-RIC loops to concurrent async requests. Use when: migrating sequential historical_pricing.summaries single-RIC loops; fetching historical pricing for multiple RICs concurrently; applying asyncio.gather() or asyncio.TaskGroup() with historical_pricing.summaries; controlling concurrency and rate limits with asyncio.Semaphore; handling HTTP 429 Too Many Requests errors; implementing display_response() for async results."
 argument-hint: "number of instruments or RIC list"
 ---
 
@@ -162,16 +162,32 @@ finally:
     ))
 ```
 
-### Step 5 — Add a Semaphore for Rate-Limit Control (HTTP 429)
+### Step 5 — Control Concurrency with `asyncio.Semaphore` (HTTP 429 Prevention)
 
-If HTTP **429 Too Many Requests** errors appear, the platform is being overwhelmed. Wrap each coroutine with a semaphore to cap concurrent in-flight requests:
+#### Why
+
+`asyncio.gather()` and `asyncio.TaskGroup()` submit every coroutine to the event loop at once. For large instrument lists (30+), this floods the Data Platform and triggers HTTP **429 Too Many Requests** errors. An `asyncio.Semaphore` acts as a counter that allows at most *N* coroutines to hold it simultaneously — all others pause and wait their turn.
+
+```
+asyncio.Semaphore(N)  →  at most N HTTP requests in-flight at any time
+```
+
+#### Key Rules
+
+- **Create the semaphore once**, outside the helper function, and close over it. Never create a new instance per call.
+- **Wrap only the `await get_data_async(...)` call** inside `async with semaphore:`. That is the only critical section that needs throttling.
+- **The semaphore controls concurrency inside each coroutine**, not inside `asyncio.gather()` itself. Pass the coroutine list to `gather()` as usual.
+- **Start conservatively** (5–10) and increase only if the platform responds cleanly. Reduce further if 429s persist.
+
+#### Pattern with `asyncio.gather()`
 
 ```python
 MAX_CONCURRENT = 5  # Tune down if 429s persist; tune up if platform allows
-_sem = asyncio.Semaphore(MAX_CONCURRENT)
+semaphore = asyncio.Semaphore(MAX_CONCURRENT)
 
 async def fetch_with_limit(ric: str):
-    async with _sem:
+    """Fetch one RIC's historical data, respecting the concurrency cap."""
+    async with semaphore:  # Suspends here when MAX_CONCURRENT requests are already in-flight
         return await historical_pricing.summaries.Definition(
             universe=ric,
             fields=INTERDAY_FIELDS,
@@ -180,17 +196,58 @@ async def fetch_with_limit(ric: str):
             end=END,
             adjustments=EVENT_ADJUSTMENTS,
         ).get_data_async(closure=ric)
+
+try:
+    tasks = asyncio.gather(
+        *[fetch_with_limit(ric) for ric in INSTRUMENTS],
+        return_exceptions=True,  # Collect all results; don't abort on first error
+    )
+    hist_data = await tasks  # pylint: disable=await-outside-async
+    display_response(hist_data)
+except* LDError as errors:
+    for error in errors.exceptions:
+        print(error)
 ```
 
-Then replace the inner coroutine in `asyncio.gather()` with `fetch_with_limit(ric)`:
+#### Pattern with `asyncio.TaskGroup()` (Python 3.11+)
 
 ```python
-tasks = asyncio.gather(
-    *[fetch_with_limit(ric) for ric in INSTRUMENTS],
-    return_exceptions=True,
-)
-hist_data = await tasks
+MAX_CONCURRENT = 5
+semaphore = asyncio.Semaphore(MAX_CONCURRENT)
+
+async def fetch_with_limit(ric: str):
+    """Fetch one RIC's historical data, respecting the concurrency cap."""
+    async with semaphore:
+        return await historical_pricing.summaries.Definition(
+            universe=ric,
+            fields=INTERDAY_FIELDS,
+            interval=Intervals.DAILY,
+            start=START,
+            end=END,
+            adjustments=EVENT_ADJUSTMENTS,
+        ).get_data_async(closure=ric)
+
+try:
+    async with asyncio.TaskGroup() as tg:
+        task_handles = [
+            tg.create_task(fetch_with_limit(ric))
+            for ric in INSTRUMENTS
+        ]
+    hist_data = [t.result() for t in task_handles]
+    display_response(hist_data)
+except* LDError as errors:
+    for error in errors.exceptions:
+        print(f"Error: {error}")
 ```
+
+#### Tuning Guide
+
+| Situation | Action |
+|---|---|
+| HTTP 429 errors appear | Reduce `MAX_CONCURRENT` (try 3–5) |
+| Requests complete cleanly and quickly | Gradually increase `MAX_CONCURRENT` (try 10–15) |
+| Safe starting point for most accounts | `MAX_CONCURRENT = 5` to `10` |
+| Only a few RICs (< 10) | Semaphore is optional; the platform can usually handle it |
 
 ---
 
