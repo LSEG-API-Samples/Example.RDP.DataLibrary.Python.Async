@@ -746,5 +746,7 @@ If you are using [Python](https://developers.lseg.com/en/api-catalog/lseg-data-p
 
 However, if you prefer to manage authentication and sessions yourself, or if you are using another programming language such as Java, Go, Rust, Ruby, or C++, the Data Platform HTTP REST APIs are also straightforward and easy to use.
 
+Please find more detail on the [Comparison of Data Library for Python VS Python/requests direct call for the Delivery Platform (RDP) application](https://developers.lseg.com/en/article-catalog/article/comparison-of-data-library-python-vs-python-requests) article.
+
 That covers all I wanted to say today. 
 
