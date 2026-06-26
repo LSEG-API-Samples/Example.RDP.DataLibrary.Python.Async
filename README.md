@@ -163,6 +163,7 @@ You can find more detail regarding the Data Library and Python Asyncio from the 
 - [Essential Guide to the Data Libraries - Generations of Python library (EDAPI, RDP, RD, LD)](https://developers.lseg.com/en/article-catalog/article/essential-guide-to-the-data-libraries) article.
 - [Upgrade from using Eikon Data API to the Data library](https://developers.lseg.com/en/article-catalog/article/Upgrade-from-using-Eikon-Data-API-to-the-Data-library) article.
 - [Data Library for Python Examples on GitHub](https://github.com/LSEG-API-Samples/Example.DataLibrary.Python) repository.
+- [Comparison of Data Library for Python VS Python/requests direct call for the Delivery Platform (RDP) application](https://developers.lseg.com/en/article-catalog/article/comparison-of-data-library-python-vs-python-requests) article.
 - [Python Asyncio library](https://docs.python.org/3/library/asyncio.html) page.
 - [A Conceptual Overview of asyncio](https://docs.python.org/3/howto/a-conceptual-overview-of-asyncio.html#a-conceptual-overview-of-asyncio) article.
 - [Python's asyncio: A Hands-On Walkthrough](https://realpython.com/async-io-python/)
