@@ -348,7 +348,7 @@ Each request uses `closure=company`, so you can retrieve a specific instrument b
 next(
     response.data.df,
     for response in historical_data
-    if getattr(response, "closure", None) == "NVIDIA"
+    if getattr(response, "closure", None) == "SpaceX"
 )
 ```
 
