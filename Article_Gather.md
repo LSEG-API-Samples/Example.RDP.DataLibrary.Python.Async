@@ -501,7 +501,7 @@ When using `asyncio.gather` with `return_exceptions=True`, the errors and except
 
 #### Invalid and Non-Permission RICs
 
-I am demonstrating with the invalid RIC code `INVALID_RIC` and non-permission RIC (`ASML.L` for ASML Holding, your permission may be different) requests. I am demonstrating with the invalid RIC code `INVALID_RIC` and non-permission RIC (`ASML.L` for ASML Holding, your permission may be different) requests. The definition is `historical_pricing.summaries.Definition` for *interday* data which is similar from Data Platform `/data/historical-pricing/v1/views/interday-summaries/` endpoint.
+I am demonstrating with the invalid RIC code `INVALID_RIC` and non-permission RIC (`ASML.L` for ASML Holding, your permission may be different) requests. I am demonstrating with the invalid RIC code `INVALID_RIC` and non-permission RIC (`ASML.L` for ASML Holding, your permission may be different) requests. 
 
 ```python
 invalid_instrument_cases = {
@@ -541,7 +541,7 @@ except* LDError as errors:
 
 You can see that the results include both successful responses and error messages:
 
-- `INVALIDRIC.O` returns `The universe is not found.. Requested ric: INVALIDRIC.O` message, which means the instrument was not found.
+- `INVALID_RIC.O` returns `The universe is not found.. Requested ric: INVALID_RIC.O` message, which means the instrument was not found.
 - `ASML.AS` returns `User has no permission.. Requested ric: ASML.AS` message, which means the user does not have permission to access that instrument.
 
 These error messages appear alongside the historical data returned for the successful requests.
