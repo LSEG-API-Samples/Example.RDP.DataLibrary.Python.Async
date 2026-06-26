@@ -1,4 +1,4 @@
-# Concurrent Data Platform API Calls with Python Asyncio and Data Library for Python
+# Concurrent Requests with Python Asyncio and Data Library for Python
 
 - Version: 1.0
 - Last update: June 2026
@@ -162,6 +162,7 @@ You can find more detail regarding the Data Library and Python Asyncio from the 
 - [The Data Library for Python  - Quick Reference Guide (Access layer)](https://developers.lseg.com/en/article-catalog/article/the-data-library-for-python-quick-reference-guide-access-layer) article.
 - [Essential Guide to the Data Libraries - Generations of Python library (EDAPI, RDP, RD, LD)](https://developers.lseg.com/en/article-catalog/article/essential-guide-to-the-data-libraries) article.
 - [Upgrade from using Eikon Data API to the Data library](https://developers.lseg.com/en/article-catalog/article/Upgrade-from-using-Eikon-Data-API-to-the-Data-library) article.
+- [Data Library for Python Reference Guide](https://developers.lseg.com/en/api-catalog/lseg-data-platform/lseg-data-library-for-python/documentation#reference-guide) document
 - [Data Library for Python Examples on GitHub](https://github.com/LSEG-API-Samples/Example.DataLibrary.Python) repository.
 - [Comparison of Data Library for Python VS Python/requests direct call for the Delivery Platform (RDP) application](https://developers.lseg.com/en/article-catalog/article/comparison-of-data-library-python-vs-python-requests) article.
 - [Python Asyncio library](https://docs.python.org/3/library/asyncio.html) page.

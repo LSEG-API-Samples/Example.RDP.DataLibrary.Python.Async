@@ -1,4 +1,4 @@
-# Concurrent Data Platform API Calls with Python Asyncio Gather and Data Library for Python
+# Concurrent Requests with Python Asyncio Gather and Data Library for Python
 
 ## Overview
 
@@ -663,7 +663,11 @@ The Historical Pricing definitions universe parameter accept both single-RIC and
 
 **Recommendation**: Use multiple single-RIC requests with `asyncio.gather()` for better data handling, as each instrument’s success or failure can be handled independently.
 
-## Summary: Data Library Historical Pricing with Asyncio Gather
+## Is Historical Pricing the only module that contains asynchronous method?
+
+No, some of Data Library Content Layer IPA modules (example: IPA Financial Contracts, IPA Surface Cap, etc.) also contains the `get_data_async` method for getting data asynchronously. Please check the [Data Library for Python Reference Guide](https://developers.lseg.com/en/api-catalog/lseg-data-platform/lseg-data-library-for-python/documentation#reference-guide) document for more detail.
+
+## Summary: Using Data Library get_data_async method with Asyncio Gather
 
 That brings us to a summary of using Asyncio Gather method. The `asyncio.gather(..., return_exceptions=True)` pattern is practical for concurrent batch requests when you need full visibility of all outcomes (success and fail).
 
