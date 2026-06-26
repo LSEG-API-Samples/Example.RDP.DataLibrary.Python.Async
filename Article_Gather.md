@@ -263,7 +263,7 @@ This `display_response`  handles Python exceptions that can appear in the return
 
 Next, we group multiple calls to the `get_data_async` method with `asyncio.gather()` and run them as awaitable coroutines. 
 
-I am demonstrating the most basic form of grouping multiple calls using `historical_pricing.events.Definition` for istorical Pricing Events data and `historical_pricing.summaries.Definition` for Historical Pricing Interday data.
+I am demonstrating the most basic form of grouping multiple calls using `historical_pricing.events.Definition` for Historical Pricing Events data and `historical_pricing.summaries.Definition` for Historical Pricing Interday data.
 
 - `historical_pricing.events.Definition` retrieves data from the Data Platform  `/data/historical-pricing/v1/views/events/` endpoint.
 - `historical_pricing.summaries.Definition`, when used with *interday* data, retrieves data from the Data Platform `/data/historical-pricing/v1/views/interday-summaries/` endpoint.
@@ -356,7 +356,7 @@ next(
 
 Next, we group multiple `get_data_async` calls with `asyncio.gather()` and use [`asyncio.Semaphore`](https://docs.python.org/3/library/asyncio-sync.html#asyncio.Semaphore) to limit the number of in-flight requests at any given time (default: 3).
 
-If you are requesting only 2-10 RICs, the backend can usually handle the load without issue. As the number of simultaneous requests grows to 50, 100, or more, a semaphore becomes essential for staying within the platform's rate limits (see the **Rate Limit** section in the README). The following example demonstrates this pattern with 20 RICs.
+If you are requesting only 2-10 RICs, the backend can usually handle the load without issue. As the number of simultaneous requests grows to 50, 100, or more, a semaphore becomes essential for staying within the platform's rate limits (see the **Throttling and Rate Limits** section above). The following example demonstrates this pattern with 20 RICs.
 
 The semaphore pattern is recommended when requesting a large number of instruments from the platform.
 
