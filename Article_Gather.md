@@ -342,15 +342,7 @@ The helper `display_response(historical_data)` method in this notebook already f
 
 #### How to get data for one instrument
 
-Each request uses `closure=company`, so you can retrieve a specific instrument by matching `closure`:
-
-```python
-next(
-    response.data.df,
-    for response in historical_data
-    if getattr(response, "closure", None) == "SpaceX"
-)
-```
+Each request uses `closure=company`, so you can retrieve a specific instrument by matching `closure` as the code for getting "SpaceX" company above.
 
 ### Requesting Data with Request Limits
 
