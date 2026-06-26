@@ -29,7 +29,7 @@ Run all commands in this guide from the **workspace root** folder.
 
 ## Expected Project Layout
 
-Before running setup commands, confirm the project structure should match this layout:
+Before running setup commands, confirm the project structure includes at least the following layout:
 
 ```text
 /
@@ -45,6 +45,7 @@ Before running setup commands, confirm the project structure should match this l
 └── notebook/
     ├── ld_notebook_async_gather.ipynb
     ├── ld_notebook_gather_performance.ipynb
+    ├── ld_notebook_gethistory_performance.ipynb
     ├── .env
     ├── .env.example
     └── lseg-data.config.json
@@ -53,6 +54,7 @@ Before running setup commands, confirm the project structure should match this l
 Notes:
 - `.venv/` must be inside the workspace root.
 - `notebook/` must contain `lseg-data.config.json` and `.env.example`.
+- Additional temporary files (for example, `.ipynb_checkpoints/`) may be present.
 
 ---
 

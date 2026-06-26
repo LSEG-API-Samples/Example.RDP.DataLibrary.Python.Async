@@ -56,17 +56,18 @@ Please your LSEG representative or account manager for the Data Platform Access
 ```
 .
 ├── notebook/
-│   ├── ld_notebook_async_gather.ipynb          # Main notebook
-│   ├── ld_notebook_gather_performance.ipynb    # Asyncio Gather performance notebook
-│   ├── lseg-data.config.json                   # Data Library logging configuration
-│   ├── .env                                    # Platform Session credentials (not committed)
-│   └── .env.example                            # Credentials template
-├── images                                      # Project images folder
-├── .venv                                       # Project Python virtual environment
-├── LICENSE.md                                  # Project License
-├── requirements.txt                            # Pinned Python dependencies
-├── Article_Gather.md                           # The Asyncio Gather with Data Library article document
-└── README.md                                   # The Project README file
+│   ├── ld_notebook_async_gather.ipynb              # Main notebook
+│   ├── ld_notebook_gather_performance.ipynb        # Asyncio Gather performance notebook
+│   ├── ld_notebook_gethistory_performance.ipynb    # Access Layer get_history performance notebook
+│   ├── lseg-data.config.json                       # Data Library logging configuration
+│   ├── .env                                        # Platform Session credentials (not committed)
+│   └── .env.example                                # Credentials template
+├── images                                          # Project images folder
+├── .venv                                           # Project Python virtual environment
+├── LICENSE.md                                      # Project License
+├── requirements.txt                                # Pinned Python dependencies
+├── Article_Gather.md                               # The Asyncio Gather with Data Library article document
+└── README.md                                       # The Project README file
 ```
 
 ---
@@ -86,6 +87,8 @@ Please your LSEG representative or account manager for the Data Platform Access
 | Notebook | Description |
 |---|---|
 | [ld_notebook_async_gather.ipynb](notebook/ld_notebook_async_gather.ipynb) | Demonstrates how to request multiple RICs concurrently using the Data Library Historical Pricing `get_data_async` method combined with `asyncio.gather()`. Covers Events and Summaries definitions, error handling for invalid RICs and fields, and how `return_exceptions=True` keeps all results — successes and failures — in one place. |
+| [ld_notebook_gather_performance.ipynb](notebook/ld_notebook_gather_performance.ipynb) | Measures performance of concurrent Historical Pricing Interday requests using `get_data_async` with `asyncio.gather()`, including controlled throttling with `asyncio.Semaphore`. |
+| [ld_notebook_gethistory_performance.ipynb](notebook/ld_notebook_gethistory_performance.ipynb) | Measures baseline performance of the synchronous Access Layer `get_history` method for equivalent interday retrieval, used for side-by-side comparison with the async gather approach. |
 
 ---
 
